@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOA Mortality Table Search</title>
+  <script src="data.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      background: #f5f6f8;
+      color: #222;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a3a5c;
+      color: #fff;
+      padding: 18px 32px;
+    }
+    header h1 { font-size: 20px; font-weight: 600; }
+    header p  { font-size: 12px; opacity: 0.7; margin-top: 3px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 60px);
+    }
+
+    /* ---- Sidebar filters ---- */
+    .sidebar {
+      background: #fff;
+      border-right: 1px solid #dde1e7;
+      padding: 24px 20px;
+      position: sticky;
+      top: 0;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #555;
+      margin-bottom: 18px;
+    }
+
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #444;
+      margin-bottom: 5px;
+    }
+    .field select,
+    .field input[type="number"],
+    .field input[type="text"] {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 14px;
+      background: #fafafa;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .field select:focus,
+    .field input:focus { border-color: #1a3a5c; background: #fff; }
+
+    .rates-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .rates-header label { font-size: 12px; font-weight: 600; color: #444; }
+    .rates-header button {
+      font-size: 11px;
+      padding: 3px 8px;
+      background: #eef2f7;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .rates-header button:hover { background: #dde5f0; }
+
+    .rate-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+    .rate-row span {
+      font-size: 11px;
+      color: #888;
+      width: 62px;
+      flex-shrink: 0;
+    }
+    .rate-row input {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      background: #fafafa;
+      outline: none;
+    }
+    .rate-row input:focus { border-color: #1a3a5c; background: #fff; }
+    .rate-row .del-btn {
+      width: 22px;
+      height: 22px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #aaa;
+      font-size: 16px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .rate-row .del-btn:hover { color: #c0392b; }
+
+    .tolerance-note {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+      margin-bottom: 12px;
+    }
+
+    .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+    .btn-search {
+      flex: 1;
+      padding: 9px;
+      background: #1a3a5c;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-search:hover { background: #234f7e; }
+    .btn-clear {
+      padding: 9px 14px;
+      background: #fff;
+      color: #555;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .btn-clear:hover { background: #f0f0f0; }
+
+    /* ---- Main results area ---- */
+    .main { padding: 24px 28px; overflow-y: auto; }
+
+    .results-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .results-header h2 { font-size: 16px; font-weight: 600; }
+    .results-header .count { font-size: 13px; color: #666; }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #888;
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 15px; }
+
+    /* ---- Result cards ---- */
+    .result-card {
+      background: #fff;
+      border: 1px solid #dde1e7;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a3a5c;
+      text-decoration: none;
+      flex: 1;
+      min-width: 200px;
+    }
+    .card-title:hover { text-decoration: underline; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-gender-male    { background: #dbeafe; color: #1d4ed8; }
+    .badge-gender-female  { background: #fce7f3; color: #9d174d; }
+    .badge-gender-combined{ background: #e8f5e9; color: #256029; }
+    .badge-select         { background: #fff8e1; color: #7c5700; }
+    .badge-aggregate      { background: #f3f4f6; color: #444; }
+    .badge-risk           { background: #f0f0f0; color: #555; }
+
+    .card-body { padding: 12px 16px; }
+
+    .age-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .rate-table-wrapper {
+      overflow-x: auto;
+    }
+    .rate-table {
+      border-collapse: collapse;
+      font-size: 12px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      min-width: max-content;
+    }
+    .rate-table th {
+      background: #f5f6f8;
+      padding: 4px 10px;
+      text-align: center;
+      font-weight: 600;
+      color: #555;
+      border: 1px solid #e0e0e0;
+    }
+    .rate-table td {
+      padding: 4px 10px;
+      text-align: right;
+      border: 1px solid #e0e0e0;
+      color: #333;
+    }
+    .rate-table td.matched {
+      background: #fffbe6;
+      font-weight: 700;
+      color: #7c5700;
+    }
+
+    .match-info {
+      font-size: 11px;
+      color: #888;
+      margin-top: 6px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #444;
+      cursor: pointer;
+      user-select: none;
+    }
+    .checkbox-label input { cursor: pointer; }
+
+    #rate-filters.dimmed {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    /* Loading */
+    #loading {
+      text-align: center;
+      padding: 60px;
+      color: #888;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>SOA Mortality Table Search</h1>
+  <p>Search the Society of Actuaries public mortality table database by rate vector</p>
+</header>
+
+<div class="layout">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <h2>Filters</h2>
+
+    <div class="field">
+      <label for="inp-name">Table Name</label>
+      <input type="text" id="inp-name" placeholder="e.g. VBT, CSO, 2015…">
+      <label class="checkbox-label" style="margin-top:7px">
+        <input type="checkbox" id="chk-name-only" onchange="onNameOnlyToggle()">
+        Name search only <span style="color:#999;font-weight:400">(one result per table)</span>
+      </label>
+    </div>
+
+    <div id="rate-filters">
+    <div class="field">
+      <label for="sel-gender">Gender</label>
+      <select id="sel-gender">
+        <option value="">All</option>
+        <option value="Male">Male</option>
+        <option value="Female">Female</option>
+        <option value="Combined">Combined / Unisex</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="inp-age">Issue Age</label>
+      <input type="number" id="inp-age" min="0" max="120" placeholder="e.g. 35">
+    </div>
+
+    <div class="field">
+      <div class="rates-header">
+        <label>Rates (starting at Duration 1)</label>
+        <button onclick="addRateInput()">+ Add</button>
+      </div>
+      <div id="rate-inputs"></div>
+      <p class="tolerance-note">Tolerance: ±0.000001 per rate</p>
+    </div>
+    </div> <!-- end #rate-filters -->
+
+    <div class="btn-row">
+      <button class="btn-search" onclick="doSearch()">Search</button>
+      <button class="btn-clear" onclick="clearAll()">Clear</button>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="main">
+    <div id="loading">Loading mortality data…</div>
+    <div id="results-area" style="display:none">
+      <div class="results-header">
+        <h2 id="results-title">Results</h2>
+        <span class="count" id="results-count"></span>
+      </div>
+      <div id="results-list"></div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let DATA = null;
+let tableById = {};      // table_id → table object
+let ratesByTable = {};   // table_id → list of rate rows
+let rateInputCount = 0;
+const TOLERANCE = 1e-6;
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+window.addEventListener("DOMContentLoaded", () => {
+  if (!window.MORTALITY_DATA) {
+    document.getElementById("loading").innerHTML =
+      "<b>Error:</b> Could not load data.js. Make sure data.js is in the same folder as index.html.";
+    return;
+  }
+
+  DATA = window.MORTALITY_DATA;
+
+  // Build lookups
+  DATA.tables.forEach(t => { tableById[t.id] = t; });
+  DATA.rates.forEach(r => {
+    if (!ratesByTable[r.tid]) ratesByTable[r.tid] = [];
+    ratesByTable[r.tid].push(r);
+  });
+
+  // Add 3 default rate inputs
+  addRateInput(); addRateInput(); addRateInput();
+
+  const n = DATA.meta.total_tables;
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("results-area").style.display = "block";
+  setEmptyState(`Database loaded: ${n.toLocaleString()} table${n !== 1 ? "s" : ""}. Enter criteria above to search.`);
+
+  // Search on Enter key
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter") doSearch();
+  });
+});
+
+// ─── Rate inputs ─────────────────────────────────────────────────────────────
+function addRateInput() {
+  rateInputCount++;
+  const dur = rateInputCount;
+  const wrap = document.createElement("div");
+  wrap.className = "rate-row";
+  wrap.id = `rate-row-${dur}`;
+  wrap.innerHTML = `
+    <span>Duration ${dur}</span>
+    <input type="number" id="rate-${dur}" step="any" min="0" max="1"
+           placeholder="0.00000" oninput="onRateInput(${dur})">
+    <button class="del-btn" onclick="removeRateInput(${dur})" title="Remove">×</button>
+  `;
+  document.getElementById("rate-inputs").appendChild(wrap);
+}
+
+function removeRateInput(dur) {
+  const el = document.getElementById(`rate-row-${dur}`);
+  if (el) el.remove();
+}
+
+function onRateInput(dur) {
+  // Auto-add new input when user types in the last visible one
+  const allRows = document.querySelectorAll(".rate-row");
+  const lastDur = parseInt(allRows[allRows.length - 1].id.replace("rate-row-", ""));
+  if (dur === lastDur && document.getElementById(`rate-${dur}`).value.trim() !== "") {
+    addRateInput();
+  }
+}
+
+function getRates() {
+  const allRows = document.querySelectorAll(".rate-row");
+  const rates = [];
+  allRows.forEach(row => {
+    const dur = parseInt(row.id.replace("rate-row-", ""));
+    const input = document.getElementById(`rate-${dur}`);
+    const val = input ? input.value.trim() : "";
+    rates.push(val === "" ? null : parseFloat(val));
+  });
+  // Trim trailing nulls
+  while (rates.length && rates[rates.length - 1] === null) rates.pop();
+  return rates;
+}
+
+// ─── Search ──────────────────────────────────────────────────────────────────
+function doSearch() {
+  if (!DATA) return;
+
+  const nameQuery  = document.getElementById("inp-name").value.trim().toLowerCase();
+  const nameOnly   = document.getElementById("chk-name-only").checked;
+  const gender     = document.getElementById("sel-gender").value;
+  const ageStr     = document.getElementById("inp-age").value.trim();
+  const age        = ageStr === "" ? null : parseInt(ageStr);
+  const rates      = getRates();
+
+  if (nameOnly) {
+    if (!nameQuery) {
+      setEmptyState("Enter a table name to search.");
+      return;
+    }
+    const matches = DATA.tables.filter(t =>
+      t.name.toLowerCase().includes(nameQuery)
+    );
+    renderNameOnlyResults(matches, nameQuery);
+    return;
+  }
+
+  // Require at least one criterion
+  if (!nameQuery && !gender && age === null && rates.filter(r => r !== null).length === 0) {
+    setEmptyState("Please enter at least one search criterion.");
+    return;
+  }
+
+  const results = [];
+
+  for (const [tidStr, rateRows] of Object.entries(ratesByTable)) {
+    const tid = parseInt(tidStr);
+    const tbl = tableById[tid];
+    if (!tbl) continue;
+
+    // Name filter
+    if (nameQuery && !tbl.name.toLowerCase().includes(nameQuery)) continue;
+
+    // Gender filter
+    if (gender && tbl.gender !== gender) continue;
+
+    // Find matching rate row(s) for this table
+    for (const rr of rateRows) {
+      // Age filter
+      if (age !== null && rr.age !== age) continue;
+
+      // Rate filter
+      if (!ratesMatch(rr.d, rates)) continue;
+
+      results.push({ tbl, rr });
+    }
+  }
+
+  renderResults(results, { gender, age, rates });
+}
+
+function renderNameOnlyResults(tables, query) {
+  const list  = document.getElementById("results-list");
+  const title = document.getElementById("results-title");
+  const count = document.getElementById("results-count");
+
+  title.textContent = "Results";
+  count.textContent = `${tables.length.toLocaleString()} table${tables.length !== 1 ? "s" : ""}`;
+
+  if (tables.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="icon">🔍</div>
+      <p>No tables matched "<strong>${escHtml(query)}</strong>".</p>
+    </div>`;
+    return;
+  }
+
+  tables.sort((a, b) => a.name.localeCompare(b.name));
+
+  list.innerHTML = tables.map(tbl => {
+    const genderClass = {Male:"male", Female:"female", Combined:"combined"}[tbl.gender] || "combined";
+    const isSelect    = tbl.select_period > 1;
+    const genderBadge = `<span class="badge badge-gender-${genderClass}">${tbl.gender}</span>`;
+    const periodBadge = isSelect
+      ? `<span class="badge badge-select">${tbl.select_period}-yr select</span>`
+      : `<span class="badge badge-aggregate">Aggregate</span>`;
+    const riskBadge   = tbl.risk_class && tbl.risk_class !== "Unknown"
+      ? `<span class="badge badge-risk">${escHtml(tbl.risk_class)}</span>`
+      : "";
+
+    return `<div class="result-card">
+      <div class="card-header">
+        <a class="card-title" href="${escHtml(tbl.link)}" target="_blank" rel="noopener">
+          ${escHtml(tbl.name)}
+        </a>
+        ${genderBadge}
+        ${periodBadge}
+        ${riskBadge}
+      </div>
+      <div class="card-body">
+        <p class="age-label">
+          Ages ${tbl.min_age}–${tbl.max_age}
+          ${tbl.content_type ? `&nbsp;·&nbsp; ${escHtml(tbl.content_type)}` : ""}
+          &nbsp;·&nbsp; <a href="${escHtml(tbl.link)}" target="_blank" rel="noopener" style="color:#1a3a5c;font-size:11px;">View on SOA ↗</a>
+        </p>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function ratesMatch(actual, search) {
+  if (search.length === 0) return true;
+  for (let i = 0; i < search.length; i++) {
+    if (search[i] === null) continue;
+    const a = actual[i];
+    if (a === null || a === undefined) return false;
+    if (Math.abs(a - search[i]) > TOLERANCE) return false;
+  }
+  return true;
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+function renderResults(results, criteria) {
+  const list = document.getElementById("results-list");
+  const title = document.getElementById("results-title");
+  const count = document.getElementById("results-count");
+
+  title.textContent = "Results";
+  count.textContent = `${results.length.toLocaleString()} match${results.length !== 1 ? "es" : ""}`;
+
+  if (results.length === 0) {
+    list.innerHTML = `<div class="empty-state">
+      <div class="icon">🔍</div>
+      <p>No tables matched your criteria. Try relaxing the filters.</p>
+    </div>`;
+    return;
+  }
+
+  // Sort: tables with a select period first, then by table name
+  results.sort((a, b) => {
+    if (b.tbl.select_period !== a.tbl.select_period)
+      return b.tbl.select_period - a.tbl.select_period;
+    return a.tbl.name.localeCompare(b.tbl.name);
+  });
+
+  const nDurSearch = criteria.rates.filter(r => r !== null).length;
+
+  list.innerHTML = results.map(({ tbl, rr }) => {
+    const genderClass = {Male:"male", Female:"female", Combined:"combined"}[tbl.gender] || "combined";
+    const isSelect = tbl.select_period > 1;
+
+    const genderBadge = `<span class="badge badge-gender-${genderClass}">${tbl.gender}</span>`;
+    const periodBadge = isSelect
+      ? `<span class="badge badge-select">${tbl.select_period}-yr select</span>`
+      : `<span class="badge badge-aggregate">Aggregate</span>`;
+    const riskBadge = tbl.risk_class && tbl.risk_class !== "Unknown"
+      ? `<span class="badge badge-risk">${escHtml(tbl.risk_class)}</span>`
+      : "";
+
+    const rateTable = buildRateTable(rr, criteria.rates, tbl.select_period);
+
+    return `<div class="result-card">
+      <div class="card-header">
+        <a class="card-title" href="${escHtml(tbl.link)}" target="_blank" rel="noopener">
+          ${escHtml(tbl.name)}
+        </a>
+        ${genderBadge}
+        ${periodBadge}
+        ${riskBadge}
+      </div>
+      <div class="card-body">
+        <p class="age-label">Issue Age: <strong>${rr.age}</strong>
+          ${tbl.content_type ? `&nbsp;·&nbsp; ${escHtml(tbl.content_type)}` : ""}
+          &nbsp;·&nbsp; <a href="${escHtml(tbl.link)}" target="_blank" rel="noopener" style="color:#1a3a5c;font-size:11px;">View on SOA ↗</a>
+        </p>
+        <div class="rate-table-wrapper">${rateTable}</div>
+        ${nDurSearch > 0 ? `<p class="match-info">Matched on ${nDurSearch} duration${nDurSearch !== 1 ? "s" : ""} within ±${TOLERANCE}</p>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function buildRateTable(rr, searchRates, selectPeriod) {
+  const d = rr.d || [];
+  // Show all non-null rates, at minimum show all searched durations
+  let maxDur = Math.max(d.length, searchRates.length);
+  if (maxDur === 0) return "<em>No rates available</em>";
+
+  const headers = Array.from({length: maxDur}, (_, i) => `<th>Dur ${i + 1}</th>`).join("");
+  const cells = Array.from({length: maxDur}, (_, i) => {
+    const val = d[i];
+    const isMatched = searchRates[i] !== null && searchRates[i] !== undefined
+                      && val !== null && val !== undefined
+                      && Math.abs(val - searchRates[i]) <= TOLERANCE;
+    const display = val !== null && val !== undefined
+      ? formatRate(val)
+      : "<span style='color:#ccc'>—</span>";
+    return `<td${isMatched ? ' class="matched"' : ""}>${display}</td>`;
+  }).join("");
+
+  return `<table class="rate-table">
+    <thead><tr><th>Age</th>${headers}</tr></thead>
+    <tbody><tr><td style="font-weight:600">${rr.age}</td>${cells}</tr></tbody>
+  </table>`;
+}
+
+function formatRate(v) {
+  if (v === null || v === undefined) return "—";
+  // Show up to 6 significant figures without trailing zeros
+  let s = v.toPrecision(6);
+  // Remove trailing zeros after decimal
+  if (s.includes(".")) s = s.replace(/\.?0+$/, "");
+  return s;
+}
+
+function setEmptyState(msg) {
+  document.getElementById("results-title").textContent = "Results";
+  document.getElementById("results-count").textContent = "";
+  document.getElementById("results-list").innerHTML =
+    `<div class="empty-state"><div class="icon">📊</div><p>${msg}</p></div>`;
+}
+
+function onNameOnlyToggle() {
+  const checked = document.getElementById("chk-name-only").checked;
+  document.getElementById("rate-filters").classList.toggle("dimmed", checked);
+}
+
+function clearAll() {
+  document.getElementById("inp-name").value = "";
+  document.getElementById("chk-name-only").checked = false;
+  document.getElementById("rate-filters").classList.remove("dimmed");
+  document.getElementById("sel-gender").value = "";
+  document.getElementById("inp-age").value = "";
+  document.getElementById("rate-inputs").innerHTML = "";
+  rateInputCount = 0;
+  addRateInput(); addRateInput(); addRateInput();
+  setEmptyState("Filters cleared. Enter new criteria to search.");
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+</script>
+</body>
+</html>
