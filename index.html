@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SOA Mortality Table Search</title>
   <script src="data.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -541,6 +542,7 @@ function renderNameOnlyResults(tables, query) {
           Ages ${tbl.min_age}–${tbl.max_age}
           ${tbl.content_type ? `&nbsp;·&nbsp; ${escHtml(tbl.content_type)}` : ""}
           &nbsp;·&nbsp; <a href="${escHtml(tbl.link)}" target="_blank" rel="noopener" style="color:#1a3a5c;font-size:11px;">View on SOA ↗</a>
+          ${tbl.select_period > 1 ? `&nbsp;·&nbsp; <a href="#" onclick="exportAxis(${tbl.id});return false;" style="color:#1a3a5c;font-size:11px;">Export to AXIS ↗</a>` : ""}
         </p>
       </div>
     </div>`;
@@ -611,6 +613,7 @@ function renderResults(results, criteria) {
         <p class="age-label">Issue Age: <strong>${rr.age}</strong>
           ${tbl.content_type ? `&nbsp;·&nbsp; ${escHtml(tbl.content_type)}` : ""}
           &nbsp;·&nbsp; <a href="${escHtml(tbl.link)}" target="_blank" rel="noopener" style="color:#1a3a5c;font-size:11px;">View on SOA ↗</a>
+          ${tbl.select_period > 1 ? `&nbsp;·&nbsp; <a href="#" onclick="exportAxis(${tbl.id});return false;" style="color:#1a3a5c;font-size:11px;">Export to AXIS ↗</a>` : ""}
         </p>
         <div class="rate-table-wrapper">${rateTable}</div>
         ${nDurSearch > 0 ? `<p class="match-info">Matched on ${nDurSearch} duration${nDurSearch !== 1 ? "s" : ""} within ±${TOLERANCE}</p>` : ""}
@@ -674,6 +677,57 @@ function clearAll() {
   rateInputCount = 0;
   addRateInput(); addRateInput(); addRateInput();
   setEmptyState("Filters cleared. Enter new criteria to search.");
+}
+
+// ─── AXIS Export ─────────────────────────────────────────────────────────────
+function exportAxis(tableId) {
+  const tbl      = tableById[tableId];
+  const rateRows = ratesByTable[tableId] || [];
+  if (!tbl || tbl.select_period <= 1) return;
+
+  const sp       = tbl.select_period;
+  const nnn      = String(sp + 1).padStart(3, "0");
+  const shape    = `EA_${nnn}_100`;
+  const ultimate = tbl.ultimate || {};   // keys are strings e.g. "43"
+
+  // Build rate lookup: issue_age → d[] (0-indexed, d[0]=dur1)
+  const rateLookup = {};
+  rateRows.forEach(rr => { rateLookup[rr.age] = rr.d; });
+
+  // Column headers row (Run_Id, Section, Shape, TableName, Row, Op, C1…C100)
+  const colHeaders = ["Run_Id", "Section", "Shape", "TableName", "Row", "Op",
+    ...Array.from({length: 100}, (_, i) => `C${i + 1}`)];
+
+  const prefix = (row) => ["", "S_Q", shape, tbl.name, row, ""];
+
+  // Row -2: issue-age headers (0–99)
+  const headerRow = [...prefix(-2), ...Array.from({length: 100}, (_, i) => i)];
+
+  // Select rows: one per duration
+  const selectRows = [];
+  for (let dur = 1; dur <= sp; dur++) {
+    const cells = prefix(dur);
+    for (let issueAge = 0; issueAge < 100; issueAge++) {
+      const d = rateLookup[issueAge];
+      const v = d && d[dur - 1] != null ? d[dur - 1] : "";
+      cells.push(v);
+    }
+    selectRows.push(cells);
+  }
+
+  // Ultimate row: attained age = issue_age + select_period
+  const ultRow = prefix(sp + 1);
+  for (let issueAge = 0; issueAge < 100; issueAge++) {
+    const attAge = String(issueAge + sp);
+    ultRow.push(ultimate[attAge] != null ? ultimate[attAge] : "");
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet([colHeaders, headerRow, ...selectRows, ultRow]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "AXIS");
+
+  const safe = tbl.name.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_");
+  XLSX.writeFile(wb, `${safe}_AXIS.xlsx`);
 }
 
 function escHtml(s) {

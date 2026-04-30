@@ -59,7 +59,8 @@ def setup_db(db_path: Path) -> sqlite3.Connection:
             select_period   INTEGER,
             min_age         INTEGER,
             max_age         INTEGER,
-            link            TEXT
+            link            TEXT,
+            ultimate_json   TEXT
         )
     """)
     dur_cols = ",\n            ".join(f"d{i} REAL" for i in range(1, MAX_DURATIONS + 1))
@@ -87,16 +88,17 @@ def already_scraped(conn: sqlite3.Connection, table_id: int) -> bool:
 
 
 def insert_table(conn: sqlite3.Connection, meta: dict, rate_rows: list):
+    ultimate_json = json.dumps(meta.get("ultimate", {}), separators=(",", ":")) or None
     conn.execute(
         """INSERT OR REPLACE INTO tables
            (table_identity, name, content_type, nation, gender, risk_class,
-            select_period, min_age, max_age, link)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            select_period, min_age, max_age, link, ultimate_json)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (
             meta["table_identity"], meta["name"], meta["content_type"],
             meta["nation"], meta["gender"], meta["risk_class"],
             meta["select_period"], meta["min_age"], meta["max_age"],
-            meta["link"],
+            meta["link"], ultimate_json,
         ),
     )
     if rate_rows:
@@ -198,8 +200,15 @@ def parse_page(html: str, table_id: int):
         return None, []
 
     # ---- Separate select vs ultimate sub-tables ----
+    # Two description formats exist on the SOA site:
+    #   new: "..., Select" / "..., Ultimate"  (ends with the word)
+    #   old: "...Minimum Select Age: X..." / "...Minimum Ultimate Age: X..."
+    # We cannot use a simple "Ultimate" in desc check because table names like
+    # "Select and Ultimate Table" cause both sub-tables to match.
     def is_ultimate(desc):
-        return desc.strip().endswith("Ultimate") and "Select" not in desc
+        stripped = desc.strip()
+        last_word = stripped.rsplit(None, 1)[-1] if stripped else ""
+        return last_word == "Ultimate" or "Ultimate Age:" in desc
 
     select_parts = [(d, n, t) for d, n, t in data_tables if not is_ultimate(d)]
     ult_parts = [(d, n, t) for d, n, t in data_tables if is_ultimate(d)]
@@ -246,6 +255,22 @@ def parse_page(html: str, table_id: int):
     if not rate_rows:
         return None, []
 
+    # ---- Collect ultimate rates (attained_age → rate) for select+ultimate tables ----
+    ultimate = {}
+    if select_parts and ult_parts:
+        for _, _, ult_tbl in ult_parts:
+            ult_rows = ult_tbl.find_all("tr")
+            for row in ult_rows[1:]:
+                cells = row.find_all(["td", "th"])
+                if len(cells) < 2:
+                    continue
+                try:
+                    att_age = int(cells[0].get_text(strip=True))
+                    rate = float(cells[1].get_text(strip=True))
+                    ultimate[att_age] = rate
+                except ValueError:
+                    continue
+
     ages = [r["age"] for r in rate_rows]
     meta = {
         "table_identity": table_id,
@@ -258,6 +283,7 @@ def parse_page(html: str, table_id: int):
         "min_age": min(ages),
         "max_age": max(ages),
         "link": f"{BASE_URL}/ViewTable.aspx?TableIdentity={table_id}",
+        "ultimate": ultimate,
     }
     return meta, rate_rows
 
@@ -292,14 +318,17 @@ def export_json(conn: sqlite3.Connection, json_path: Path):
     log.info("Exporting to %s …", json_path)
     tables = []
     for row in conn.execute(
-        "SELECT table_identity, name, content_type, nation, gender, risk_class, select_period, min_age, max_age, link FROM tables ORDER BY table_identity"
+        "SELECT table_identity, name, content_type, nation, gender, risk_class, select_period, min_age, max_age, link, ultimate_json FROM tables ORDER BY table_identity"
     ):
-        tables.append({
+        entry = {
             "id": row[0], "name": row[1], "content_type": row[2],
             "nation": row[3], "gender": row[4], "risk_class": row[5],
             "select_period": row[6], "min_age": row[7], "max_age": row[8],
             "link": row[9],
-        })
+        }
+        if row[10]:
+            entry["ultimate"] = json.loads(row[10])
+        tables.append(entry)
 
     dur_cols = ", ".join(f"d{i}" for i in range(1, MAX_DURATIONS + 1))
     rate_rows = []
