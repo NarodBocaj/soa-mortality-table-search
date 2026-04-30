@@ -1,11 +1,10 @@
 # SOA Mortality Table Search
 
-A searchable database of all ~3,000 public mortality tables hosted by the [Society of Actuaries](https://mort.soa.org). Enter a partial rate vector, gender, and issue age to identify which table(s) your rates come from. Each matching result can be exported directly to an AXIS-compatible Excel file.
+A searchable database of all ~3,000 public mortality tables hosted by the [Society of Actuaries](https://mort.soa.org). Enter a partial rate vector, gender, and issue age to identify which table(s) your rates come from. Each matching result can be exported directly to an AXIS-compatible Excel file (please still check your table with the link to the SOA website).
 
 ## Live demo
 
-Hosted on Vercel — no installation required:
-
+ Currently hosted on Vercel
 👉 **[soa-mortality-table-search.vercel.app](https://soa-mortality-table-search.vercel.app)**
 
 ## How it works
@@ -63,16 +62,6 @@ Then commit the updated `data.js` and push to redeploy.
 | `--max-id` | 3500 | Upper bound for table ID scan |
 | `--limit` | 10 | Max tables to scrape in test mode (ignored with `--full`) |
 
-## Deploying to Vercel
-
-Because the project is a static site with no build step, Vercel deploys it automatically:
-
-1. Fork or clone this repo and push to GitHub.
-2. Import the repository in the [Vercel dashboard](https://vercel.com/new).
-3. Leave all build settings at their defaults (framework: **Other**, build command: blank, output directory: blank).
-4. Click **Deploy** — Vercel will serve `index.html` and `data.js` as static assets.
-
-To update the live data after a rescrape, commit the new `data.js` and push; Vercel redeploys automatically.
 
 ## Using the search
 
@@ -85,7 +74,7 @@ The search page filters the full database client-side:
 
 Matches are found within a tolerance of **±0.000001** per rate. Results are sorted with select-period tables first, then alphabetically by table name. Each result card links directly to the source table on the SOA website.
 
-**Export to AXIS:** any select-period table card shows an "Export to AXIS ↗" link. Clicking it downloads an Excel file formatted for import into AXIS actuarial software (`EA_NNN_100` shape, select rates in rows 1–N, ultimate rates in row N+1).
+**Export to AXIS:** any select-period table card shows an "Export to AXIS ↗" link. Clicking it downloads an Excel file formatted for import into AXIS actuarial software (note I've only spot checked a handful of these so please check your export actually looks correct). Also I only supported select and ultimate tables here since base attained age ones are already quite easy.
 
 **Example search:** Gender = Female, Issue Age = 50, Duration 1 = `0.00027`, Duration 2 = `0.00047` → returns 2015 VBT Female Non-Smoker tables.
 
