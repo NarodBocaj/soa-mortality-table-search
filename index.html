@@ -709,7 +709,7 @@ function exportAxis(tableId) {
     const cells = prefix(dur);
     for (let issueAge = 0; issueAge < 100; issueAge++) {
       const d = rateLookup[issueAge];
-      const v = d && d[dur - 1] != null ? d[dur - 1] : "";
+      const v = d && d[dur - 1] != null ? d[dur - 1] * 1000 : "";
       cells.push(v);
     }
     selectRows.push(cells);
@@ -719,7 +719,7 @@ function exportAxis(tableId) {
   const ultRow = prefix(sp + 1);
   for (let issueAge = 0; issueAge < 100; issueAge++) {
     const attAge = String(issueAge + sp);
-    ultRow.push(ultimate[attAge] != null ? ultimate[attAge] : "");
+    ultRow.push(ultimate[attAge] != null ? ultimate[attAge] * 1000 : "");
   }
 
   const ws = XLSX.utils.aoa_to_sheet([colHeaders, headerRow, ...selectRows, ultRow]);
